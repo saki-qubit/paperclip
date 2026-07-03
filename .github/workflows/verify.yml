@@ -1,0 +1,36 @@
+name: ratchet-verify
+# Runs ONLY when code is touched (push / PR). No schedules, no auto-start.
+on:
+  push:
+  pull_request:
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: detect
+        run: echo "node=$([ -f package.json ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+      - if: steps.detect.outputs.node == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - if: steps.detect.outputs.node == 'true'
+        name: install
+        run: |
+          if [ -f package-lock.json ]; then npm ci; else npm install; fi
+      - if: steps.detect.outputs.node == 'true'
+        name: verify
+        run: npm run verify --if-present
+      - name: Telegram alert on failure
+        if: failure()
+        continue-on-error: true
+        run: |
+          if [ -n "${{ secrets.TELEGRAM_BOT_TOKEN }}" ]; then
+            curl -s "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+              -d chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
+              -d text="🔴 Ratchet: bug found
+          Repo: ${{ github.repository }} @ ${{ github.ref_name }} (${{ github.sha }})
+          Check: verify workflow
+          Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          Status: needs a fixer" > /dev/null
+          fi
